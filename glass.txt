@@ -5,7 +5,7 @@
 ########################
 # autotravel around and kill things
 # go down stairs once floor is complete
-# will eat permafood when hungry
+# will eat permafood when very hungry
 # does not attack harmless plants
 # will chop and eat enemy corpses if hungry (small problem with single corpse)
 # Rest when low on hp
@@ -13,12 +13,12 @@
 ###################
 # Next Objectives #
 ###################
-# leveling up problems
 # Berserking as an option
 # Fleeing as an option
 # Dealing with the aftermath of berserk
 # other god abilities
 # dealing with shops
+# leveling up problems
 # Focus on important enemies (ie. orc priests)
 # Deal with invisible enemies
 # Deal with status effects (confusion, etc.)
@@ -33,12 +33,13 @@
 
 show_more = false
 
-#auto-select FeBe (maybe switch to MiBe later)
-species += Fe
+#auto-select TrBe (maybe switch to MiBe later)
+weapon += claws
+species += Tr
 background += Be
 
-#Only pick up food until further implementation
-autopickup = %
+#Only pick up food and money until further implementation
+autopickup = %$
 autopickup_exceptions += <rotten
 
 #only stop autotravel on sight of stairs right now, not on items
@@ -46,16 +47,45 @@ explore_stop = stairs
 
 < function keypress(command)
     crawl.sendkeys(command)
+--    crawl.process_command()
+--    coroutine.yield(true)
+end >
+
+< function max(a, b)
+    if (a > b) then
+      return a
+    else
+      return b
+    end
 end >
 
 < function sign(a)
-    if a > 0 then
+    if (a > 0) then
       return 1
-    elseif a < 0 then
+    elseif (a < 0) then
       return -1
     else
       return 0
     end
+end >
+
+< function length(arr)
+    local size = 0
+    for index, value in ipairs(arr) do
+      size = size + 1
+    end
+    return size
+end >
+
+< function find(patterns, text)
+    local begin, final
+    for i, pattern in ipairs(patterns) do
+      begin, final = string.find(text, (pattern))
+      if begin ~= nil then
+        return begin, final
+      end
+    end
+    return -1, -1
 end >
 
 #accept input "singular" or "all", if "all", return all locations with monsters, if "singular" return closest
@@ -65,12 +95,19 @@ end >
     x = 0
     y = 0
     for radius = 1, 7 do
-      x, y = detect_monster_radius(radius)
+      x, y = detect_monster_radius(radius, "all")
       if (x ~= 0 or y ~= 0) then
         return x, y
       end
     end
     return 0, 0
+end >
+
+< function detect_all_monsters()
+    for radius = 1, 7 do
+      x, y = detect_monster_radius(radius, "all")
+      return x,y
+    end
 end >
 
 < function is_harmless(mon)
@@ -83,14 +120,22 @@ end >
     end
 end >
 
-< function detect_monster_radius(rad)
+< function detect_monster_radius(rad, option)
     local neg_rad = -1 * rad
     local close_monster
+    local easy = {}
+    local hard = {}
+    local nasty = {}
     for x = 0, 2*rad do
       close_monster = monster.get_monster_at(neg_rad + x, rad)
       if close_monster then
         if (not is_harmless(close_monster)) then
-          return neg_rad + x, rad
+          if (option == "single") then
+            return neg_rad + x, rad
+          elseif (close_monster:threat() >= 2) then
+            crawl.mpr("somewhat dangerous monster")
+            return neg_rad + x, rad
+          end
         end
       end
     end
@@ -156,17 +201,6 @@ end >
 < function autotravel()
     keypress('o')
 end >
-
-< function find(patterns, text)
-    local begin, final
-    for i, pattern in ipairs(patterns) do
-      begin, final = string.find(text, (pattern))
-      if begin ~= nil then
-        return begin, final
-      end
-    end
-    return -1, -1
-end >
     
 < function eat_permafood()
     local this_item
@@ -187,13 +221,18 @@ end >
 end >
 
 < function analyze_danger()
-    local num_diff_monsters
-    local x,y = detect_monsters()
-    if (x == 0 and y == 0) then
-      return 0,0,0
+    local nasty = {}
+    local hard = {}
+    local easy = {}
+
+--    nasty_monsters, hard_monsters, easy_monsters = detect_all_enemies()
+    if (nasty == {} and hard == {} and easy == {}) then
+      return 0, detect_mosters()
     else
-      --more intelligent detection necessary
-      return 1,x,y
+      --This is probably going to require trial and error
+      nasty, hard, easy = detect_all_monsters()
+      danger = 1
+      return danger, detect_monsters()
     end
 end >
 
@@ -239,7 +278,6 @@ end >
     -- -no corpse
     -- -now on corpse
     -- -started starving while moving to corpse
-
 end >
 
 ###################
@@ -290,6 +328,7 @@ end >
           autotravel()
         else
           keypress('5')
+          cur_goal = "none"
         end
       end
     else
@@ -297,8 +336,15 @@ end >
         --change this to something smarter, right now we eat while starving regardless of danger
         error = eat_permafood()
       else
-        crawl.mpr(you.turns() .. " ||| " .. x .. ", " .. y)
-        error = move_towards_location(x,y)
+        if (cur_danger > danger_limit and hunger >= 1 and berserk == 0) then
+          keypress('aa')
+          berserk = 1
+        elseif (cur_danger > danger_limit and berserk == 0) then
+          flee()
+        else
+          crawl.mpr(you.turns() .. " ||| " .. x .. ", " .. y)
+          error = move_towards_location(x,y)
+        end
       end
     end
     if (prev_turn == you.turns()) then
@@ -307,7 +353,7 @@ end >
     else
       non_moves = 0
     end
-    if (non_moves > 10) then
+    if (non_moves > 5) then
       keypress("G>")
     end
     prev_turn = you.turns()
@@ -321,8 +367,8 @@ end >
 :cur_goal = "none"
 :non_moves = 0
 :prev_danger = 0
-:prev_x = 0
-:prev_y = 0
-:list_of_permafood = {"ration", "fruit", "jelly", "pizza", "jerky"}
-:list_of_harmless = {"plant", "bush"}
+:berserk = 0
+:list_of_permafood = {"ration", "fruit", "jelly", "pizza", "jerky", "sausage"}
+:list_of_harmless = {"plant", "bush", "fungus"}
 :list_of_dangerous = {"orc warrior", "orc priest"}
+:danger_limit = 5
