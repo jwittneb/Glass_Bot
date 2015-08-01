@@ -9,13 +9,16 @@
 # does not attack harmless plants
 # will chop and eat enemy corpses if hungry (small problem with single corpse)
 # Rest when low on hp
+# Berserking as an option
 
 ###################
 # Next Objectives #
 ###################
-# Berserking as an option
 # Fleeing as an option
 # Dealing with the aftermath of berserk
+# no corpses causing a bug?
+# Only Berserk when next to enemy
+# holding key down
 # other god abilities
 # dealing with shops
 # leveling up problems
@@ -33,9 +36,9 @@
 
 show_more = false
 
-#auto-select TrBe (maybe switch to MiBe later)
-weapon += claws
-species += Tr
+#auto-select MiBe (maybe switch to MiBe later)
+weapon += hand axe
+species += Mi
 background += Be
 
 #Only pick up food and money until further implementation
@@ -88,14 +91,13 @@ end >
     return -1, -1
 end >
 
-#accept input "singular" or "all", if "all", return all locations with monsters, if "singular" return closest
 < function detect_monsters()
     local radius
     local x, y
     x = 0
     y = 0
     for radius = 1, 7 do
-      x, y = detect_monster_radius(radius, "all")
+      x, y = detect_monster_radius(radius, "single")
       if (x ~= 0 or y ~= 0) then
         return x, y
       end
@@ -104,15 +106,28 @@ end >
 end >
 
 < function detect_all_monsters()
+    local easy = {}
+    local hard = {}
+    local nasty = {}
+    local easy_add, hard_add, nasty_add
     for radius = 1, 7 do
-      x, y = detect_monster_radius(radius, "all")
-      return x,y
+      nasty_add, hard_add, easy_add = detect_monster_radius(radius, "all")
+      for index, val in ipairs(nasty_add) do
+        table.insert(nasty, val)
+      end
+      for index, val in ipairs(hard_add) do
+        table.insert(hard, val)
+      end
+      for index, val in ipairs(easy_add) do
+        table.insert(easy, val)
+      end
     end
+    return nasty, hard, easy
 end >
 
 < function is_harmless(mon)
     local pos1, pos2
-    pos1, pos2 = find(list_of_harmless, mon:desc())
+    pos1, pos2 = find(list_of_harmless, mon:name())
     if (pos1 == -1) then
       return false
     else
@@ -132,9 +147,12 @@ end >
         if (not is_harmless(close_monster)) then
           if (option == "single") then
             return neg_rad + x, rad
-          elseif (close_monster:threat() >= 2) then
-            crawl.mpr("somewhat dangerous monster")
-            return neg_rad + x, rad
+          elseif (close_monster:threat() == 1) then
+            table.insert(easy, close_monster)
+          elseif (close_monster:threat() == 2) then
+            table.insert(hard, close_monster)
+          elseif (close_monster:threat() == 3) then
+            table.insert(nasty, close_monster)
           end
         end
       end
@@ -143,7 +161,15 @@ end >
       close_monster = monster.get_monster_at(neg_rad + x, neg_rad)
       if close_monster then
         if (not is_harmless(close_monster)) then
-          return neg_rad + x, neg_rad
+          if (option == "single") then
+            return neg_rad + x, neg_rad
+          elseif (close_monster:threat() == 1) then
+            table.insert(easy, close_monster)
+          elseif (close_monster:threat() == 2) then
+            table.insert(hard, close_monster)
+          elseif (close_monster:threat() == 3) then
+            table.insert(nasty, close_monster)
+          end
         end
       end
     end
@@ -151,7 +177,15 @@ end >
       close_monster = monster.get_monster_at(neg_rad, neg_rad + x)
       if close_monster then
         if (not is_harmless(close_monster)) then
-          return neg_rad, neg_rad+x
+          if (option == "single") then
+            return neg_rad, neg_rad+x
+          elseif (close_monster:threat() == 1) then
+            table.insert(easy, close_monster)
+          elseif (close_monster:threat() == 2) then
+            table.insert(hard, close_monster)
+          elseif (close_monster:threat() == 3) then
+            table.insert(nasty, close_monster)
+          end
         end
       end
     end
@@ -159,11 +193,23 @@ end >
       close_monster = monster.get_monster_at(rad, neg_rad + x)
       if close_monster then
         if (not is_harmless(close_monster)) then
-          return rad, neg_rad+x
+          if (option == "single") then
+            return rad, neg_rad+x
+          elseif (close_monster:threat() == 1) then
+            table.insert(easy, close_monster)
+          elseif (close_monster:threat() == 2) then
+            table.insert(hard, close_monster)
+          elseif (close_monster:threat() == 3) then
+            table.insert(nasty, close_monster)
+          end
         end
       end
     end
-    return 0, 0
+    if (option == "single") then
+      return 0, 0
+    else
+      return nasty, hard, easy
+    end
 end>
 
 #TODO make this slightly smarter
@@ -225,15 +271,13 @@ end >
     local hard = {}
     local easy = {}
 
---    nasty_monsters, hard_monsters, easy_monsters = detect_all_enemies()
-    if (nasty == {} and hard == {} and easy == {}) then
-      return 0, detect_mosters()
-    else
-      --This is probably going to require trial and error
-      nasty, hard, easy = detect_all_monsters()
-      danger = 1
-      return danger, detect_monsters()
-    end
+    nasty, hard, easy = detect_all_monsters()
+    local l_nasty = length(nasty)
+    local l_hard = length(hard)
+    local l_easy = length(easy)
+    --This is probably going to require trial and error
+    local danger = length(nasty)*4 + length(hard)*2 + length(easy)
+    return danger, detect_monsters()
 end >
 
 < function attempt_chop_corpse()
@@ -336,13 +380,13 @@ end >
         --change this to something smarter, right now we eat while starving regardless of danger
         error = eat_permafood()
       else
-        if (cur_danger > danger_limit and hunger >= 1 and berserk == 0) then
+        if (cur_danger > danger_limit and hung >= 1 and berserk == 0) then
           keypress('aa')
           berserk = 1
         elseif (cur_danger > danger_limit and berserk == 0) then
           flee()
         else
-          crawl.mpr(you.turns() .. " ||| " .. x .. ", " .. y)
+          crawl.mpr(you.turns() .. " ||| " .. x .. ", " .. y .. ", " .. cur_danger)
           error = move_towards_location(x,y)
         end
       end
@@ -371,4 +415,4 @@ end >
 :list_of_permafood = {"ration", "fruit", "jelly", "pizza", "jerky", "sausage"}
 :list_of_harmless = {"plant", "bush", "fungus"}
 :list_of_dangerous = {"orc warrior", "orc priest"}
-:danger_limit = 5
+:danger_limit = 3
