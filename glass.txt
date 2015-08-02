@@ -10,21 +10,21 @@
 # will chop and eat enemy corpses if hungry (small problem with single corpse)
 # Rest when low on hp
 # Berserking as an option
+# Dealing with the aftermath of berserk
 
 ###################
 # Next Objectives #
 ###################
 # Fleeing as an option
-# Dealing with the aftermath of berserk
 # no corpses causing a bug?
+# Deal with invisible enemies
+# Deal with status effects (confusion, etc.)
 # Only Berserk when next to enemy
 # holding key down
 # other god abilities
 # dealing with shops
 # leveling up problems
 # Focus on important enemies (ie. orc priests)
-# Deal with invisible enemies
-# Deal with status effects (confusion, etc.)
 # Make it so we do attack dangerous plants (oklob plants)
 # Deal with no permafood scenario
 # Make being able to use stairs once level is complete smarter
@@ -49,8 +49,10 @@ autopickup_exceptions += <rotten
 explore_stop = stairs
 
 < function keypress(command)
+--    prev_turn = you.turns()
+--    prev_danger = cur_danger
     crawl.sendkeys(command)
---    crawl.process_command()
+    crawl.process_command()
 --    coroutine.yield(true)
 end >
 
@@ -270,13 +272,13 @@ end >
     local nasty = {}
     local hard = {}
     local easy = {}
-
+    chp, mhp = you.hp()
     nasty, hard, easy = detect_all_monsters()
     local l_nasty = length(nasty)
     local l_hard = length(hard)
     local l_easy = length(easy)
     --This is probably going to require trial and error
-    local danger = length(nasty)*4 + length(hard)*2 + length(easy)
+    local danger = (length(nasty)*4 + length(hard)*2 + length(easy))*(mhp/chp)
     return danger, detect_monsters()
 end >
 
@@ -327,7 +329,6 @@ end >
 ###################
 # start function  #
 ###################
-
 < function begin()
     local error
     local x,y
@@ -335,7 +336,30 @@ end >
     cur_danger,x,y = analyze_danger()
     local chp, mhp = you.hp()
 
+    if (prev_turn == you.turns()) then
+      --crap, we failed to move this turn... Hopefully because the floor is done
+      non_moves = non_moves + 1
+    else
+      non_moves = 0
+    end
+    if (non_moves > 5) then
+      keypress("G>")
+    end
+
+    if (not you.berserk()) then
+      berserk = 0
+    end
+
     if (x == 0 and y == 0) then
+      if (you.berserk()) then
+        keypress('5')
+        return
+      elseif (you.exhausted() and hung >= 1) then
+        keypress('5')
+        return
+      elseif (you.exhausted()) then
+        eat_permafood()
+      end
       if (cur_goal == "chopping") then
         error = attempt_chop_corpse()
         cur_goal = "none"
@@ -353,14 +377,14 @@ end >
       if (cur_goal == "none") then
         crawl.mpr(tostring(chp) .. " / " .. tostring(mhp))
         if (hung <= 1) then
-          attempt_corpse_find()
           cur_goal = "chopping"
+          attempt_corpse_find()
         elseif (chp < mhp) then
           cur_goal = "rest"
         -- this is hungry or worse
         elseif (hung <= 3) then
-          attempt_corpse_find()
           cur_goal = "chopping"
+          attempt_corpse_find()
         else
           autotravel()
         end
@@ -371,18 +395,19 @@ end >
           --maybe change this when more options are available
           autotravel()
         else
-          keypress('5')
           cur_goal = "none"
+          keypress('5')
         end
       end
     else
+      cur_goal = "none"
       if (hung == 0) then
         --change this to something smarter, right now we eat while starving regardless of danger
         error = eat_permafood()
       else
-        if (cur_danger > danger_limit and hung >= 1 and berserk == 0) then
-          keypress('aa')
+        if (cur_danger > danger_limit and hung >= 3 and berserk == 0) then
           berserk = 1
+          keypress('aa')
         elseif (cur_danger > danger_limit and berserk == 0) then
           flee()
         else
@@ -390,15 +415,6 @@ end >
           error = move_towards_location(x,y)
         end
       end
-    end
-    if (prev_turn == you.turns()) then
-      --crap, we failed to move this turn... Hopefully because the floor is done
-      non_moves = non_moves + 1
-    else
-      non_moves = 0
-    end
-    if (non_moves > 5) then
-      keypress("G>")
     end
     prev_turn = you.turns()
     prev_danger = cur_danger
@@ -412,7 +428,9 @@ end >
 :non_moves = 0
 :prev_danger = 0
 :berserk = 0
+:prev_turn = 0
 :list_of_permafood = {"ration", "fruit", "jelly", "pizza", "jerky", "sausage"}
 :list_of_harmless = {"plant", "bush", "fungus"}
 :list_of_dangerous = {"orc warrior", "orc priest"}
 :danger_limit = 3
+:hold = 0
