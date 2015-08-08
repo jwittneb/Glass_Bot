@@ -259,15 +259,81 @@ end>
 
 < function init_djik()
     local N, NW, E, SW, S, SE, NE, W
+    local next = {}
     for i = 7, 9 do
       for j = 7, 9 do
         if (i ~= 8 or j ~= 8) then
-          local feature = view.feature_at(i-8, j-8)
-          if (travel.feature_traversable == 1) then
+          local feat = view.feature_at(i-8, j-8)
+          if (travel.feature_traversable(feat)) then
             cur_loc_array[i][j] = 1
+            temp = {}
+            temp.i = i
+            temp.j = j
+            temp.dir = {j-8, i-8}
+            table.insert(next, temp)
           end
         end
       end
+    end
+    return next
+end >
+
+< function djik_helper(i, j, depth, next, dir)
+    if (cur_loc_array[i][j] > depth + 1) then
+      feat = view.feature_at(i,j)
+      if (travel.feature_traversable(feat)) then
+        cur_loc_array[i][j] = depth + 1
+        temp = {}
+        temp.i = i
+        temp.j = j
+        temp.dir = dir
+        table.insert(next, temp)
+      elseif (feat == "untravelled") then
+        temp = {}
+        temp.i = i
+        temp.j = j
+        temp.dir = dir
+        table.insert(next, temp)
+        return 1, next
+      end
+    end
+    return 0, next
+end >
+
+#TODO
+< function djik(arr, depth)
+    local W, E, N, S, NW, NE, SW, SE
+    local feat, found
+    local next = {}
+    for index, value in ipairs(arr) do
+      local i, j = value.i, value.j
+      for x = i-1, i+1 do
+        for y = j-1, j+1 do
+          if (x ~= i or y ~= j) then
+            found, next = djik_helper(x, y, depth, next, value.dir)
+            if (found) then
+              return next, 1
+            end
+          end
+        end
+      end
+    end
+    return next, 0  
+end >
+
+< function find_move()
+    local next = init_djik()
+    local done = 0
+    local depth = 1
+    while (done == 0 and depth < 10) do
+      next, done = djik(next, depth)
+      depth = depth + 1
+    end
+    if (depth == 10) then
+      crawl.mpr("crap, we didn't find a location")
+    else
+-- NEED TO FIX THE GLOBAL MATRIX
+      crawl.mpr(tostring(next.dir[1]) .. tostring(next.dir[2]))
     end
 end >
 
@@ -386,10 +452,11 @@ end >
 # start function  #
 ###################
 < function test()
-    local feat = view.feature_at(-7, -7)
-    local a = {"bad"}
-    table.insert(a, "hello")
-    crawl.mpr(a[2])
+    for i = 1, 14 do
+      for j = 1, 14 do
+        crawl.mpr(tostring(cur_loc_array[i][j]))
+      end
+    end
 end >
 
 < function begin()
@@ -400,7 +467,7 @@ end >
     local chp, mhp = you.hp()
     local berserk = you.berserk()
 
-    init_djik()
+    find_move()
     if (hold == 1) then
       return
     end
