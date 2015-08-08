@@ -258,7 +258,6 @@ end>
 ###############################
 
 < function init_djik()
-    local N, NW, E, SW, S, SE, NE, W
     local next = {}
     for i = 7, 9 do
       for j = 7, 9 do
@@ -280,7 +279,7 @@ end >
 
 < function djik_helper(i, j, depth, next, dir)
     if (cur_loc_array[i][j] > depth + 1) then
-      feat = view.feature_at(i,j)
+      local feat = view.feature_at(i-8,j-8)
       if (travel.feature_traversable(feat)) then
         cur_loc_array[i][j] = depth + 1
         temp = {}
@@ -288,6 +287,7 @@ end >
         temp.j = j
         temp.dir = dir
         table.insert(next, temp)
+        crawl.mpr("GOOD")
       elseif (feat == "untravelled") then
         temp = {}
         temp.i = i
@@ -302,16 +302,16 @@ end >
 
 #TODO
 < function djik(arr, depth)
-    local W, E, N, S, NW, NE, SW, SE
-    local feat, found
+    local feat, found, temp
     local next = {}
+    local i, j
     for index, value in ipairs(arr) do
-      local i, j = value.i, value.j
+      i, j = value.i, value.j
       for x = i-1, i+1 do
         for y = j-1, j+1 do
           if (x ~= i or y ~= j) then
             found, next = djik_helper(x, y, depth, next, value.dir)
-            if (found) then
+            if (found == 1) then
               return next, 1
             end
           end
@@ -333,7 +333,7 @@ end >
       crawl.mpr("crap, we didn't find a location")
     else
 -- NEED TO FIX THE GLOBAL MATRIX
-      crawl.mpr(tostring(next.dir[1]) .. tostring(next.dir[2]))
+--      crawl.mpr(tostring(next.dir[1]) .. tostring(next.dir[2]))
     end
 end >
 
@@ -452,8 +452,8 @@ end >
 # start function  #
 ###################
 < function test()
-    for i = 1, 14 do
-      for j = 1, 14 do
+    for i = 1, 15 do
+      for j = 1, 15 do
         crawl.mpr(tostring(cur_loc_array[i][j]))
       end
     end
