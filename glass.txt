@@ -287,14 +287,15 @@ end >
         temp.j = j
         temp.dir = dir
         table.insert(next, temp)
-        crawl.mpr("GOOD")
-      elseif (feat == "untravelled") then
+      elseif (tostring(feat) == "unseen") then
         temp = {}
         temp.i = i
         temp.j = j
         temp.dir = dir
         table.insert(next, temp)
         return 1, next
+      else
+        crawl.mpr(tostring(feat))
       end
     end
     return 0, next
@@ -309,7 +310,7 @@ end >
       i, j = value.i, value.j
       for x = i-1, i+1 do
         for y = j-1, j+1 do
-          if (x ~= i or y ~= j) then
+          if ((x ~= i or y ~= j) and (x <= 15) and (y <= 15) and (x >= 1) and (y >= 1)) then
             found, next = djik_helper(x, y, depth, next, value.dir)
             if (found == 1) then
               return next, 1
@@ -334,6 +335,8 @@ end >
     else
 -- NEED TO FIX THE GLOBAL MATRIX
 --      crawl.mpr(tostring(next.dir[1]) .. tostring(next.dir[2]))
+      crawl.mpr("We found a location!")
+      crawl.mpr("move in direction" .. next[length(next)].dir[1] .. next[length(next)].dir[2])
     end
 end >
 
