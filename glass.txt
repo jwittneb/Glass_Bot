@@ -11,18 +11,20 @@
 # Rest when low on hp
 # Berserking as an option
 # Dealing with the aftermath of berserk
+# Really dumb fleeing in place
 
 ###################
 # Next Objectives #
 ###################
-# Fleeing as an option
-# no corpses causing a bug?
+# Change autotravel to not use 'o'
+# Change fleeing to actually be intelligent
 # Deal with invisible enemies
 # Deal with status effects (confusion, etc.)
 # Only Berserk when next to enemy
 # holding key down
 # other god abilities
 # dealing with shops
+# better fleeing
 # leveling up problems
 # Focus on important enemies (ie. orc priests)
 # Make it so we do attack dangerous plants (oklob plants)
@@ -49,11 +51,30 @@ autopickup_exceptions += <rotten
 explore_stop = stairs
 
 < function keypress(command)
---    prev_turn = you.turns()
---    prev_danger = cur_danger
+    prev_turn = you.turns()
+    prev_danger = cur_danger
+    hold = 1
+    crawl.flush_input()
     crawl.sendkeys(command)
     crawl.process_command()
---    coroutine.yield(true)
+    crawl.flush_input()
+    hold = 0
+    coroutine.yield(true)
+
+end >
+
+###############################
+# Generic Functions           #
+###############################
+
+< function find_min(arr)
+    local min = arr[1]
+    for i = 2, length(arr) do
+      if (arr[i] < min) then
+        min = arr[i]
+      end
+    end
+    return min
 end >
 
 < function max(a, b)
@@ -91,6 +112,24 @@ end >
       end
     end
     return -1, -1
+end >
+
+#####################################
+# Determining Situation Functions   #
+#####################################
+
+< function analyze_danger()
+    local nasty = {}
+    local hard = {}
+    local easy = {}
+    chp, mhp = you.hp()
+    nasty, hard, easy = detect_all_monsters()
+    local l_nasty = length(nasty)
+    local l_hard = length(hard)
+    local l_easy = length(easy)
+    --This is probably going to require trial and error
+    local danger = (length(nasty)*4 + length(hard)*2 + length(easy))*(mhp/chp)
+    return danger, detect_monsters()
 end >
 
 < function detect_monsters()
@@ -214,6 +253,24 @@ end >
     end
 end>
 
+###############################
+# Movement Functions          #
+###############################
+
+< function init_djik()
+    local N, NW, E, SW, S, SE, NE, W
+    for i = 7, 9 do
+      for j = 7, 9 do
+        if (i ~= 8 or j ~= 8) then
+          local feature = view.feature_at(i-8, j-8)
+          if (travel.feature_traversable == 1) then
+            cur_loc_array[i][j] = 1
+          end
+        end
+      end
+    end
+end >
+
 #TODO make this slightly smarter
 < function move_towards_location(x,y)
     local feat = view.feature_at(sign(x), sign(y))
@@ -249,7 +306,21 @@ end >
 < function autotravel()
     keypress('o')
 end >
-    
+
+< function flee(x,y)
+    move_towards_location(-1*x, -1*y)
+end >    
+
+#TODO
+< function panic()
+    flee()
+end >
+
+
+##################################
+# Eating Functions               #
+##################################
+
 < function eat_permafood()
     local this_item
     local i, a, b
@@ -258,28 +329,13 @@ end >
       if (this_item ~= nil) then
         a, b = find(list_of_permafood,this_item:name())
         if (a ~= -1) then
-          keypress('e')
-          keypress(items.index_to_letter(i))
+          keypress("e" .. items.index_to_letter(i))
           return 0
         end
       end
     end
     crawl.mpr("No permafood, this is a problem")
     return 1
-end >
-
-< function analyze_danger()
-    local nasty = {}
-    local hard = {}
-    local easy = {}
-    chp, mhp = you.hp()
-    nasty, hard, easy = detect_all_monsters()
-    local l_nasty = length(nasty)
-    local l_hard = length(hard)
-    local l_easy = length(easy)
-    --This is probably going to require trial and error
-    local danger = (length(nasty)*4 + length(hard)*2 + length(easy))*(mhp/chp)
-    return danger, detect_monsters()
 end >
 
 < function attempt_chop_corpse()
@@ -329,12 +385,25 @@ end >
 ###################
 # start function  #
 ###################
+< function test()
+    local feat = view.feature_at(-7, -7)
+    local a = {"bad"}
+    table.insert(a, "hello")
+    crawl.mpr(a[2])
+end >
+
 < function begin()
     local error
     local x,y
     local hung = you.hunger()
     cur_danger,x,y = analyze_danger()
     local chp, mhp = you.hp()
+    local berserk = you.berserk()
+
+    init_djik()
+    if (hold == 1) then
+      return
+    end
 
     if (prev_turn == you.turns()) then
       --crap, we failed to move this turn... Hopefully because the floor is done
@@ -346,12 +415,8 @@ end >
       keypress("G>")
     end
 
-    if (not you.berserk()) then
-      berserk = 0
-    end
-
     if (x == 0 and y == 0) then
-      if (you.berserk()) then
+      if (berserk) then
         keypress('5')
         return
       elseif (you.exhausted() and hung >= 1) then
@@ -408,6 +473,8 @@ end >
         if (cur_danger > danger_limit and hung >= 3 and berserk == 0) then
           berserk = 1
           keypress('aa')
+        elseif (cur_danger > danger_limit and you.exhausted()) then
+          panic()
         elseif (cur_danger > danger_limit and berserk == 0) then
           flee()
         else
@@ -427,10 +494,10 @@ end >
 :cur_goal = "none"
 :non_moves = 0
 :prev_danger = 0
-:berserk = 0
 :prev_turn = 0
 :list_of_permafood = {"ration", "fruit", "jelly", "pizza", "jerky", "sausage"}
 :list_of_harmless = {"plant", "bush", "fungus"}
 :list_of_dangerous = {"orc warrior", "orc priest"}
 :danger_limit = 3
 :hold = 0
+:cur_loc_array = {{999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 0, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}, {999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999}}
